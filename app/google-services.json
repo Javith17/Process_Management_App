@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "608796090687",
+    "project_id": "confiengg-5aad3",
+    "storage_bucket": "confiengg-5aad3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:608796090687:android:b5f6cbc738f7f021fbf38a",
+        "android_client_info": {
+          "package_name": "com.app.confiengg"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMUj1ntxJD7FO6BInzCA1GrnJHxSArfGU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
