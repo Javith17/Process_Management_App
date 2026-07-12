@@ -60,11 +60,20 @@ fun HomeScreen(
         }
     }
     
-    val screens = listOf(
-        BottomBarScreen.Home,
-        BottomBarScreen.Attendance,
-        BottomBarScreen.Profile
-    )
+    val hasQuotations = remember { sessionManager.hasQuotations() }
+    
+    val screens = if (hasQuotations) {
+        listOf(
+            BottomBarScreen.Home,
+            BottomBarScreen.Attendance,
+            BottomBarScreen.Profile
+        )
+    } else {
+        listOf(
+            BottomBarScreen.Attendance,
+            BottomBarScreen.Profile
+        )
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -80,6 +89,8 @@ fun HomeScreen(
         Screen.Quotations.route -> "Quotations" to true
         else -> "ConfiEngg" to (navController.previousBackStackEntry != null)
     }
+
+    val startDestination = if (hasQuotations) BottomBarScreen.Home.route else BottomBarScreen.Attendance.route
 
     Scaffold(
         topBar = {
@@ -125,7 +136,7 @@ fun HomeScreen(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = BottomBarScreen.Home.route,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(BottomBarScreen.Home.route) { 

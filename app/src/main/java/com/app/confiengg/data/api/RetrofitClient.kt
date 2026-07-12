@@ -16,7 +16,8 @@ object RetrofitClient {
      * 2. Replace '192.168.0.X' with that IP below.
      * 3. Ensure your server is listening on 0.0.0.0:3000.
      */
-    private const val BASE_URL = "http://192.168.0.249:3000/"
+//    private const val BASE_URL = "http://192.168.0.249:3005/"
+    private const val BASE_URL = "https://api.confiengg.co.in/"
 
     private var retrofit: Retrofit? = null
 

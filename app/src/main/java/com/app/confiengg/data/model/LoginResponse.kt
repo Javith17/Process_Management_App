@@ -2,12 +2,24 @@ package com.app.confiengg.data.model
 
 data class LoginResponse(
     val user: UserData?,
-    val accessToken: String?
+    val accessToken: String?,
+    val configs: AppConfigs?,
+    val screens: List<ScreenPermission>? = null
 ) {
     val success: Boolean get() = user != null && accessToken != null
     val message: String? get() = if (user == null) "Invalid credentials" else null
     val role: String? get() = user?.roleName ?: "SALES"
 }
+
+data class AppConfigs(
+    val office_location: OfficeLocation?
+)
+
+data class OfficeLocation(
+    val latitue: String?,
+    val longitude: String?,
+    val perimeter: Int?
+)
 
 data class UserData(
     val userId: String,

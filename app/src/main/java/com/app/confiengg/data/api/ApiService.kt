@@ -71,4 +71,16 @@ interface ApiService {
 
     @POST("user/leave-request-list")
     suspend fun getLeaveRequests(@Body request: Map<String, String>): Response<LeaveRequestListResponse>
+
+    @POST("user/location-alert")
+    suspend fun sendLocationAlert(@Body request: Map<String, String>): Response<Unit>
+
+    @POST("user/screen-alert")
+    suspend fun sendScreenAlert(@Body request: Map<String, String>): Response<Unit>
+
+    @POST("auth/sendOTP")
+    suspend fun sendOTP(@Body request: Map<String, String>): Response<Unit>
+
+    @POST("auth/verifyOTP")
+    suspend fun verifyOTP(@Body request: Map<String, String>): Response<LoginResponse>
 }

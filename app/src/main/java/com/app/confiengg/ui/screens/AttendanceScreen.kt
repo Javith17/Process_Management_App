@@ -33,12 +33,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.app.confiengg.data.api.ApiService
 import com.app.confiengg.data.api.RetrofitClient
 import com.app.confiengg.data.model.AttendanceUpdateRequest
 import com.app.confiengg.data.pref.SessionManager
 import com.app.confiengg.ui.activities.AttachmentsActivity
 import com.app.confiengg.ui.theme.PrimaryGreen
+import com.app.confiengg.service.TrackingService
+import com.app.confiengg.worker.LocationWorker
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.Task
@@ -207,20 +212,22 @@ fun AttendanceScreen(onNavigateToHistory: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val granted = permissions[Manifest.permission.CAMERA] == true &&
-                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        if (granted) {
+        val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        
+        if (locationGranted) {
             pendingAction?.invoke()
             pendingAction = null
         } else {
-            Toast.makeText(context, "Permissions required for attendance", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Location permission is required for attendance", Toast.LENGTH_SHORT).show()
             pendingAction = null
         }
     }
 
-    fun hasPermissions(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    fun hasPermissions(context: Context, requireCamera: Boolean): Boolean {
+        val hasLocation = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        return if (requireCamera) hasLocation && hasCamera else hasLocation
     }
 
     fun checkGPSAndProceed(action: () -> Unit) {
@@ -248,16 +255,17 @@ fun AttendanceScreen(onNavigateToHistory: () -> Unit) {
         }
     }
 
-    fun handleAttendanceAction(action: () -> Unit) {
-        if (!hasPermissions(context)) {
+    fun handleAttendanceAction(requireCamera: Boolean = false, action: () -> Unit) {
+        if (!hasPermissions(context, requireCamera)) {
             pendingAction = { checkGPSAndProceed(action) }
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.CAMERA,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
+            val permissions = mutableListOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
             )
+            if (requireCamera) {
+                permissions.add(Manifest.permission.CAMERA)
+            }
+            permissionLauncher.launch(permissions.toTypedArray())
         } else {
             checkGPSAndProceed(action)
         }
@@ -403,14 +411,29 @@ fun AttendanceScreen(onNavigateToHistory: () -> Unit) {
                         if (isLoading) return@clickable
 
                         if (isShiftInEnabled) {
-                            handleAttendanceAction {
+                            handleAttendanceAction(requireCamera = true) {
                                 cameraActionType = "check-in"
                                 cameraLauncher.launch(null)
                             }
                         } else if (isShiftOutEnabled) {
-                            handleAttendanceAction {
-                                cameraActionType = "check-out"
-                                cameraLauncher.launch(null)
+                            handleAttendanceAction(requireCamera = false) {
+                                coroutineScope.launch {
+                                    performAttendanceUpdate(
+                                        context = context,
+                                        type = "check-out",
+                                        attendanceDate = activeAttendanceDate ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                                        fusedLocationClient = fusedLocationClient,
+                                        sessionManager = sessionManager,
+                                        apiService = apiService,
+                                        onSuccess = {
+                                            loadDailyAttendance()
+                                        },
+                                        onError = { message ->
+                                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        },
+                                        setLoading = { isLoading = it }
+                                    )
+                                }
                             }
                         }
                     },
@@ -654,6 +677,25 @@ suspend fun handleAttendanceWithImage(
         val response = apiService.updateAttendance(attendanceRequest)
 
         if (response.isSuccessful) {
+            if (type == "check-in") {
+                sessionManager.setCheckedIn(true, currentTime)
+                // Start background location tracking
+                val workRequest = OneTimeWorkRequestBuilder<LocationWorker>().build()
+                WorkManager.getInstance(context).enqueueUniqueWork(
+                    "LocationTrackingWork",
+                    ExistingWorkPolicy.REPLACE,
+                    workRequest
+                )
+                // Start Tracking Service
+                val serviceIntent = Intent(context, TrackingService::class.java)
+                ContextCompat.startForegroundService(context, serviceIntent)
+            } else if (type == "check-out") {
+                sessionManager.setCheckedIn(false)
+                WorkManager.getInstance(context).cancelUniqueWork("LocationTrackingWork")
+                // Stop Tracking Service
+                context.stopService(Intent(context, TrackingService::class.java))
+            }
+
             withContext(Dispatchers.IO) {
                 val file = File(context.cacheDir, "attendance_${type}_${currentTime}.jpg")
                 val out = FileOutputStream(file)
@@ -736,6 +778,12 @@ suspend fun performAttendanceUpdate(
         val response = apiService.updateAttendance(attendanceRequest)
 
         if (response.isSuccessful) {
+            if (type == "check-out") {
+                sessionManager.setCheckedIn(false)
+                WorkManager.getInstance(context).cancelUniqueWork("LocationTrackingWork")
+                // Stop Tracking Service
+                context.stopService(Intent(context, TrackingService::class.java))
+            }
             withContext(Dispatchers.Main) {
                 onSuccess()
             }
